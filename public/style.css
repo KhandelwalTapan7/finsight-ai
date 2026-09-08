@@ -1,0 +1,21 @@
+/* FinSight theme accents — layered on top of Chainlit's default dark theme */
+
+:root {
+  --finsight-accent: #2dd4a7;   /* teal — financial/positive-growth association */
+  --finsight-accent-dim: #1a8f6f;
+}
+
+/* Accent color for links and interactive highlights */
+a, .markdown-body a {
+  color: var(--finsight-accent) !important;
+}
+
+/* Action buttons (list documents / session stats / clear) get a subtle accent border */
+button[class*="action"] {
+  border-color: var(--finsight-accent-dim) !important;
+}
+
+/* Source citation side-panel entries — slightly distinct from the main chat bubbles */
+.cl-text-element {
+  border-left: 3px solid var(--finsight-accent) !important;
+}

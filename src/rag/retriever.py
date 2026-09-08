@@ -1,0 +1,47 @@
+"""Thin, agent-facing wrapper over vector_store.search with citation formatting."""
+from src.rag import vector_store
+
+# Free-tier LLM APIs enforce a tokens-per-minute cap (Groq's free tier is
+# ~8000 TPM for the models used here). A single large table chunk can
+# blow past that on its own, so every retrieved chunk is capped here at
+# retrieval time — this doesn't require re-ingesting anything, it just
+# bounds what gets stuffed into the prompt.
+MAX_CHARS_PER_CHUNK = 500
+MAX_TOTAL_CONTEXT_CHARS = 2500
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + " …[truncated]"
+
+
+def retrieve(
+    query: str,
+    *,
+    user_id: str | None,
+    session_id: str | None,
+    top_k: int = 4,
+    include_shared: bool = True,
+) -> str:
+    """
+    Returns retrieved chunks formatted as a citation-ready context block for
+    the LLM. Each chunk is tagged with its origin so the model can cite
+    "[doc:page]" and the agent can distinguish shared corpus vs. this
+    user's own upload. Both per-chunk and total context length are capped
+    to stay well under free-tier token limits.
+    """
+    hits = vector_store.search(
+        query, user_id=user_id, session_id=session_id, top_k=top_k, include_shared=include_shared,
+    )
+
+    blocks, total_chars = [], 0
+    for h in hits:
+        tag = f"[{h['doc_id']} p.{h['page']} · {h['source_type']} · {h['source']}]"
+        chunk_text = _truncate(h["text"], MAX_CHARS_PER_CHUNK)
+        block = f"{tag}\n{chunk_text}"
+        if total_chars + len(block) > MAX_TOTAL_CONTEXT_CHARS:
+            break
+        blocks.append(block)
+        total_chars += len(block)
+    return "\n\n".join(blocks)

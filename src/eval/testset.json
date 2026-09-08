@@ -1,0 +1,6 @@
+[
+  {
+    "question": "What was the reported revenue growth and what did the company attribute it to?",
+    "ground_truth": "Revenue growth should match the figure and stated driver from the ingested report — replace with a real answer once you've loaded actual filings."
+  }
+]
