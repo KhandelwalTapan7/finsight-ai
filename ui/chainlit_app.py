@@ -5,7 +5,8 @@ import uuid
 import chainlit as cl
 import httpx
 
-API_URL = "http://localhost:8000"
+import os
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 MAX_HISTORY_TURNS = 3
 
 _CITATION_RE = re.compile(r"\[([\w\-\.]+)\s+p\.(\d+)\s*·\s*(\w+)\s*·\s*(\w+)\]\n(.+?)(?=\n\[|\Z)", re.DOTALL)
