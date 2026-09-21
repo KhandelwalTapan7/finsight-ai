@@ -99,6 +99,14 @@ def search(
     Returns chunks visible to this user: their own uploads (matched on
     user_id + session_id) plus the shared corpus if include_shared=True.
 
+    Uses client.query_points(), not the older client.search(). Qdrant's
+    server dropped the /points/search REST endpoint as of server v1.19 in
+    favor of /points/query — an old pinned qdrant-client still calling
+    .search() against a v1.19+ server (e.g. any current Qdrant Cloud free
+    cluster) gets an UnexpectedResponse on every search while upsert still
+    works fine, which looks exactly like "uploads succeed but retrieval
+    always returns nothing" if you don't have this comment.
+
     User uploads and the shared corpus are searched separately, not as
     one blended similarity search. A small personal upload (a handful of
     chunks) would otherwise be drowned out by a much larger shared corpus
@@ -120,12 +128,12 @@ def search(
             ]
         )
         hits.extend(
-            client.search(
+            client.query_points(
                 collection_name=settings.COLLECTION_NAME,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=user_filter,
                 limit=top_k,
-            )
+            ).points
         )
 
     if include_shared and settings.ENABLE_SHARED_CORPUS:
@@ -134,12 +142,12 @@ def search(
             must=[qm.FieldCondition(key="source", match=qm.MatchValue(value="shared"))]
         )
         hits.extend(
-            client.search(
+            client.query_points(
                 collection_name=settings.COLLECTION_NAME,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=shared_filter,
                 limit=remaining,
-            )
+            ).points
         )
 
     return [
