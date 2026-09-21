@@ -16,7 +16,9 @@ langgraph==0.2.34
 mcp==1.1.0
 
 # --- RAG / vector store ---
-qdrant-client==1.11.3
+qdrant-client==1.19.1  # must stay reasonably current with Qdrant Cloud's server
+                       # version — v1.19+ servers dropped the old /points/search
+                       # REST endpoint (see comment in src/rag/vector_store.py)
 # fastembed = ONNX MiniLM, ~100 MB resident. Replaces sentence-transformers
 # + torch (~1.5 GB), which OOM-kills small Render instances on first query.
 fastembed==0.4.2
