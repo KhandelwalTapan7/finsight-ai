@@ -13,7 +13,7 @@ langchain-groq==0.2.0
 langgraph==0.2.34
 
 # --- MCP (official SDK) ---
-mcp==1.2.1
+mcp==1.1.0
 
 # --- RAG / vector store ---
 qdrant-client==1.11.3
