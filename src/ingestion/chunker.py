@@ -10,7 +10,7 @@ from src.ingestion.parser import RawChunk
 
 CHUNK_SIZE = 800       # characters
 CHUNK_OVERLAP = 120
-MAX_TABLE_CHARS = 1200  # large financial tables get truncated, not split mid-row
+MAX_TABLE_CHARS = 1200  # large tables get truncated, not split mid-row
 
 
 @dataclass

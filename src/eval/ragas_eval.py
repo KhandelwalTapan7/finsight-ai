@@ -80,7 +80,7 @@ def run_eval() -> dict:
     scores_df = scores.to_pandas()
 
     mlflow.set_tracking_uri(settings.MLFLOW_TRACKING_URI)
-    mlflow.set_experiment("finsight-rag-eval")
+    mlflow.set_experiment("docsight-rag-eval")
     with mlflow.start_run():
         mlflow.log_metric("faithfulness", scores_df["faithfulness"].mean())
         mlflow.log_metric("answer_relevancy", scores_df["answer_relevancy"].mean())

@@ -1,0 +1,7 @@
+📤 your upload
+
+text-classification pipeline (scikit-learn, TF-IDF) on ˜3,000 labeled support tickets across 6 categories, lifting
+weighted F1 from a 0.71 keyword-matching baseline to 0.86.
+– Automated triage of incoming requests by auto-routing high-confidence predictions and escalating low-confidence ones for human
+review, cutting manual triage volume by an estimated 25–30%.
+– Iterated on preprocessing (tokenization, n-gram/TF-IDF tuning) and model selection with the team, then mo

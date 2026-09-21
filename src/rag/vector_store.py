@@ -23,9 +23,26 @@ _client: QdrantClient | None = None
 
 
 def get_client() -> QdrantClient:
+    """
+    Remote Qdrant (Cloud or self-hosted) when QDRANT_URL is set, otherwise
+    embedded on-disk mode for local dev.
+
+    On a platform like Render the embedded mode is not an option: the
+    filesystem is wiped on every deploy, and embedded Qdrant holds an
+    exclusive lock on its directory, so a second process (or a second
+    instance after a scale-up) fails to start. Qdrant Cloud has a free
+    1 GB tier that removes both problems.
+    """
     global _client
     if _client is None:
-        _client = QdrantClient(path=str(settings.LOCAL_QDRANT_PATH))
+        if settings.QDRANT_URL:
+            _client = QdrantClient(
+                url=settings.QDRANT_URL,
+                api_key=settings.QDRANT_API_KEY or None,
+                timeout=30,
+            )
+        else:
+            _client = QdrantClient(path=str(settings.LOCAL_QDRANT_PATH))
         _ensure_collection(_client)
     return _client
 
@@ -111,7 +128,7 @@ def search(
             )
         )
 
-    if include_shared:
+    if include_shared and settings.ENABLE_SHARED_CORPUS:
         remaining = max(top_k - len(hits), top_k // 2)
         shared_filter = qm.Filter(
             must=[qm.FieldCondition(key="source", match=qm.MatchValue(value="shared"))]

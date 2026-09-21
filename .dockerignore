@@ -1,0 +1,13 @@
+.git
+.github
+data
+mlruns
+*.db
+__pycache__
+*.pyc
+.venv
+venv
+.env
+tests
+dashboard
+infra

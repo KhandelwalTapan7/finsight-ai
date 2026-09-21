@@ -1,3 +1,22 @@
+"""
+Agent orchestration layer.
+
+Domain-agnostic: the system prompt is built from config, so the same
+graph serves finance, legal, research or any other document type.
+
+Uses LangGraph's prebuilt ReAct agent as the supervisor: given a question,
+the LLM decides which tool(s) to call (search_documents, extract_chart_data,
+calculate), observes the results, and can call more tools before writing
+a final, cited answer. Tools are rebuilt per request so user_id/session_id
+are captured in a closure — that's what keeps one user's uploaded
+documents invisible to another user's queries.
+
+Roadmap note (see README "what's next"): splitting this into separate
+sub-agent graphs (a retrieval specialist, a numeric-reasoning specialist,
+a writer) behind an explicit supervisor node is the natural next
+iteration once the single-agent version is solid — starting simple and
+correct beats a fragile multi-graph setup that's hard to debug.
+"""
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 from langgraph.errors import GraphRecursionError
@@ -6,32 +25,38 @@ from langgraph.prebuilt import create_react_agent
 from src.config import settings
 from src.agents import tools as tool_impls
 
-SYSTEM_PROMPT = """You are FinSight, a financial-document research assistant.
+
+def _system_prompt() -> str:
+    """Domain-neutral by default; DOMAIN_HINT specialises it without a code change."""
+    scope = (
+        f"The documents you work with are typically {settings.DOMAIN_HINT}."
+        if settings.DOMAIN_HINT
+        else "Documents can be about anything — contracts, research papers, "
+             "manuals, reports, policies, invoices, notes."
+    )
+    return f"""You are {settings.APP_NAME}, a research assistant that answers questions strictly from the documents the user has uploaded.
+
+{scope} Never assume a subject area the documents do not support, and never fall back on general world knowledge when asked about "this document".
 
 Rules:
 - Always ground answers in retrieved context — call search_documents (and
-  extract_chart_data for anything about a chart, graph, or trend) before
-  answering ANY question about a document's content, including
-  summaries, overviews, or vague references like "this document," "it,"
-  or "the file." Never ask the user to re-share something they already
+  extract_chart_data for anything about a chart, graph, diagram or figure)
+  before answering ANY question about a document's content, including
+  summaries, overviews, or vague references like "this document," "it," or
+  "the file." Never ask the user to re-share something they already
   uploaded — search for it instead.
-- Be economical with tool calls: call search_documents at most 3 times
-  total for the entire response, no matter how many companies or topics
-  are involved — construct one broad query covering multiple entities
-  together (e.g. "TCS Infosys HDFC Bank revenue growth") rather than a
-  separate narrow query per entity. One well-constructed search usually
-  retrieves relevant chunks across every indexed company at once, since
-  it's a similarity search over the whole corpus.
+- Be economical with tool calls: call search_documents at most 3 times for
+  the entire response, no matter how many topics or entities are involved.
+  Construct one broad query covering them together rather than a separate
+  narrow query per entity — it is a similarity search over the whole
+  corpus, so one good query usually retrieves across every indexed
+  document at once.
 - Use the calculate tool for any arithmetic instead of doing it in your head.
 - Cite sources inline like [doc_id p.page] for every factual claim.
 - If the retrieved context doesn't support an answer, say so plainly
   instead of guessing.
-- When the user's own uploaded document and the shared corpus disagree or
-  can be compared, point that out explicitly.
-- Prior turns from this conversation may be included above the current
-  question — use them for context (e.g. "this document" may refer to
-  something discussed earlier), but still call search_documents again if
-  you need to re-confirm or find supporting facts for a new question.
+- Match the register of the source material: summarise a legal document in
+  legal terms, a scientific paper in scientific terms, and so on.
 """
 
 
@@ -39,28 +64,23 @@ def _build_tools(
     user_id: str | None, session_id: str | None, *, include_shared: bool = True, top_k: int = 4
 ):
     @tool
-    def search_documents(query: str = "") -> str:
-        """Semantic search over the shared corpus and this user's uploaded documents.
-        For a vague or general request (e.g. "summarize this document"), still call
-        this with your best guess at a search phrase, or leave it blank to fall back
-        to a general overview search."""
-        q = query.strip() or "document summary overview key points main topics"
+    def search_documents(query: str) -> str:
+        """Semantic search over this user's uploaded documents (and the shared corpus, if enabled)."""
         return tool_impls.search_documents(
-            q, user_id=user_id, session_id=session_id,
+            query, user_id=user_id, session_id=session_id,
             include_shared=include_shared, top_k=top_k,
         )
 
     @tool
-    def extract_chart_data(query: str = "") -> str:
-        """Search specifically within chart/graph descriptions rather than plain text."""
-        q = query.strip() or "chart graph trend"
+    def extract_chart_data(query: str) -> str:
+        """Search within descriptions of charts, diagrams and figures rather than plain text."""
         return tool_impls.extract_chart_data(
-            q, user_id=user_id, session_id=session_id, include_shared=include_shared,
+            query, user_id=user_id, session_id=session_id, include_shared=include_shared,
         )
 
     @tool
     def calculate(expression: str) -> str:
-        """Evaluate an arithmetic expression, e.g. growth or margin calculations."""
+        """Evaluate an arithmetic expression."""
         return tool_impls.calculate(expression)
 
     return [search_documents, extract_chart_data, calculate]
@@ -77,9 +97,12 @@ def build_agent(
         api_key=settings.GROQ_API_KEY,
         model=settings.GROQ_TEXT_MODEL,
         temperature=0.1,
-        timeout=90,
-        max_retries=3,
-        max_tokens=1500,
+        timeout=90,       # generous read timeout — free-tier API calls can be slow under load
+        max_retries=3,    # transient network blips shouldn't fail the whole request
+        max_tokens=1500,  # gpt-oss models spend some of this budget on internal
+                          # reasoning before writing the visible answer — 800 was too
+                          # tight and could produce an empty response if reasoning
+                          # consumed the whole budget before any answer was written
     )
     tools = _build_tools(user_id, session_id, include_shared=include_shared, top_k=top_k)
     return create_react_agent(llm, tools=tools)
@@ -92,34 +115,29 @@ def run_agent(
     session_id: str | None = None,
     include_shared: bool = True,
     top_k: int = 4,
-    history: list[dict] | None = None,
 ) -> dict:
     """
     Returns {"answer": str, "steps": [...]}. `steps` lists each tool call
     made along the way — the Chainlit UI renders these so users can see
     the agent's reasoning transparently instead of a black box.
-
-    `history` is prior user/assistant turns from the same chat (already
-    bounded to the last few exchanges by the caller) — only final answers
-    are kept, not intermediate tool calls/results, so memory stays compact
-    instead of re-sending every retrieved chunk from earlier turns.
     """
     agent = build_agent(user_id, session_id, include_shared=include_shared, top_k=top_k)
-    history_messages = [(h["role"], h["content"]) for h in (history or [])]
-    messages = [("system", SYSTEM_PROMPT), *history_messages, ("user", query)]
+    messages = [("system", _system_prompt()), ("user", query)]
     steps = []
     final_answer = ""
 
-    messages_out = []
     try:
-        for state in agent.stream(
-            {"messages": messages}, config={"recursion_limit": 20}, stream_mode="values"
-        ):
-            messages_out = state["messages"]
-    except GraphRecursionError:
-        pass
-    except Exception:
-        pass
+        # Hard cap on agent steps: without this, nothing stops a confused
+        # agent from looping through extra tool calls it doesn't need,
+        # silently burning through a scarce daily token quota.
+        result = agent.invoke({"messages": messages}, config={"recursion_limit": 20})
+        messages_out = result["messages"]
+    except GraphRecursionError as e:
+        # The agent ran out of steps without reaching a final answer —
+        # degrade gracefully with whatever it found instead of crashing
+        # into a generic error. e.args[1] holds the partial state in
+        # recent langgraph versions; fall back to an empty list if not.
+        messages_out = getattr(e, "state", {}).get("messages", []) if hasattr(e, "state") else []
 
     for msg in messages_out:
         msg_type = msg.__class__.__name__
@@ -143,7 +161,7 @@ def run_agent(
             final_answer = (
                 "I wasn't able to find relevant information for that question. Try "
                 "rephrasing it, or check that the document/company you're asking about "
-                "has actually been ingested."
+                "has actually been uploaded."
             )
 
     return {"answer": final_answer, "steps": steps}

@@ -19,7 +19,7 @@ def search_documents(
     include_shared: bool = True,
     top_k: int = 4,
 ) -> str:
-    """Semantic search over the shared financial corpus plus this user's uploaded documents."""
+    """Semantic search over this user's uploaded documents, plus the shared corpus if enabled."""
     return retrieve(
         query, user_id=user_id, session_id=session_id,
         top_k=top_k, include_shared=include_shared,
@@ -32,13 +32,13 @@ def extract_chart_data(
     session_id: str | None = None,
     include_shared: bool = True,
 ) -> str:
-    """Search specifically within chart/graph descriptions (vision-derived) rather than plain text."""
+    """Search within vision-derived descriptions of charts, diagrams and figures."""
     hits = vector_store.search(
         query, user_id=user_id, session_id=session_id, top_k=6, include_shared=include_shared,
     )
     chart_hits = [h for h in hits if h["source_type"] == "chart"]
     if not chart_hits:
-        return "No chart data found matching that query."
+        return "No chart, diagram or figure data found matching that query."
     return "\n\n".join(f"[{h['doc_id']} p.{h['page']}]\n{h['text'][:500]}" for h in chart_hits)
 
 

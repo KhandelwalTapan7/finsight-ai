@@ -8,6 +8,9 @@ same vector space as everything else. This is simpler to get right than a
 dual-embedding-space setup and is a well-established pattern for
 multimodal RAG ("vision-to-text bridging").
 
+Nothing here is domain-specific — the same pipeline handles a contract,
+a research paper, a manual or an annual report.
+
 Each page produces zero or more Chunks tagged with a source_type:
   - "text"  : the page's extracted text
   - "table" : a table pdfplumber found on the page (kept as markdown)
@@ -73,11 +76,14 @@ def _describe_chart_with_vision(png_bytes: bytes) -> str:
                     {
                         "type": "text",
                         "text": (
-                            "This image is a page from a financial report. "
-                            "Describe every chart, graph, or infographic on "
-                            "it precisely: chart type, axis labels, series "
-                            "names, and the key numbers/trend shown. If "
-                            "there is no chart, say so briefly."
+                            "This image is a page from a document. Describe "
+                            "every chart, graph, diagram, figure or infographic "
+                            "on it precisely: its type, axis or node labels, "
+                            "series or category names, and the key values, "
+                            "relationships or trends it shows. If it is a "
+                            "photograph, schematic or screenshot instead, "
+                            "describe its content and any visible text. If "
+                            "there is no visual element, say so briefly."
                         ),
                     },
                     {

@@ -7,9 +7,17 @@ README "BI dashboard" section for the exact steps and suggested visuals.
 Run:  streamlit run dashboard/streamlit_ops.py
 """
 import sqlite3
+import sys
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
+# Streamlit adds this script's own folder (dashboard/) to sys.path, not the
+# repo root — so "from src.config import settings" fails with
+# "ModuleNotFoundError: No module named 'src'" even when launched from the
+# root. Add the repo root explicitly before importing anything under src/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import settings
 from src.telemetry.logger import export_to_csv

@@ -7,7 +7,6 @@ class ChatRequest(BaseModel):
     session_id: str
     include_shared: bool = True
     top_k: int = 4
-    history: list[dict] = []
 
 
 class ChatResponse(BaseModel):
@@ -18,6 +17,6 @@ class ChatResponse(BaseModel):
 
 class IngestStatus(BaseModel):
     doc_id: str
-    status: str
+    status: str  # pending | processing | ready | failed
     chunk_count: int = 0
     error: str | None = None
