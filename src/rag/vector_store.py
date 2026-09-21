@@ -58,6 +58,24 @@ def _ensure_collection(client: QdrantClient) -> None:
             ),
         )
 
+    # Qdrant requires an explicit payload index on any field used in a
+    # query_points() filter (unlike the older, now-removed search()
+    # endpoint, which fell back to an unindexed full scan). Without these,
+    # every filtered search — which is every search this app does, since
+    # results are always scoped by source/user_id/session_id — fails with
+    # a 400 "Index required but not found" error. Creating an index that
+    # already exists is a harmless no-op, so this is safe to call on every
+    # startup rather than only once at collection creation.
+    for field in ("source", "user_id", "session_id"):
+        try:
+            client.create_payload_index(
+                collection_name=settings.COLLECTION_NAME,
+                field_name=field,
+                field_schema=qm.PayloadSchemaType.KEYWORD,
+            )
+        except Exception:
+            pass  # already indexed, or index creation is still in progress
+
 
 def upsert_chunks(
     chunks: list[Chunk],
