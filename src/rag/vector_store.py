@@ -13,6 +13,7 @@ these so one user's uploads are never visible to another user, and the
 shared/pre-loaded corpus is queryable by everyone.
 """
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http import models as qm
 
 from src.config import settings
@@ -119,36 +120,45 @@ def search(
 
     hits = []
 
-    if user_id:
-        user_filter = qm.Filter(
-            must=[
-                qm.FieldCondition(key="source", match=qm.MatchValue(value="user")),
-                qm.FieldCondition(key="user_id", match=qm.MatchValue(value=user_id)),
-                qm.FieldCondition(key="session_id", match=qm.MatchValue(value=session_id)),
-            ]
-        )
-        hits.extend(
-            client.query_points(
-                collection_name=settings.COLLECTION_NAME,
-                query=query_vector,
-                query_filter=user_filter,
-                limit=top_k,
-            ).points
-        )
+    try:
+        if user_id:
+            user_filter = qm.Filter(
+                must=[
+                    qm.FieldCondition(key="source", match=qm.MatchValue(value="user")),
+                    qm.FieldCondition(key="user_id", match=qm.MatchValue(value=user_id)),
+                    qm.FieldCondition(key="session_id", match=qm.MatchValue(value=session_id)),
+                ]
+            )
+            hits.extend(
+                client.query_points(
+                    collection_name=settings.COLLECTION_NAME,
+                    query=query_vector,
+                    query_filter=user_filter,
+                    limit=top_k,
+                ).points
+            )
 
-    if include_shared and settings.ENABLE_SHARED_CORPUS:
-        remaining = max(top_k - len(hits), top_k // 2)
-        shared_filter = qm.Filter(
-            must=[qm.FieldCondition(key="source", match=qm.MatchValue(value="shared"))]
-        )
-        hits.extend(
-            client.query_points(
-                collection_name=settings.COLLECTION_NAME,
-                query=query_vector,
-                query_filter=shared_filter,
-                limit=remaining,
-            ).points
-        )
+        if include_shared and settings.ENABLE_SHARED_CORPUS:
+            remaining = max(top_k - len(hits), top_k // 2)
+            shared_filter = qm.Filter(
+                must=[qm.FieldCondition(key="source", match=qm.MatchValue(value="shared"))]
+            )
+            hits.extend(
+                client.query_points(
+                    collection_name=settings.COLLECTION_NAME,
+                    query=query_vector,
+                    query_filter=shared_filter,
+                    limit=remaining,
+                ).points
+            )
+    except UnexpectedResponse as e:
+        # The bare exception's str/repr carries no detail (just
+        # "UnexpectedResponse()"), which is useless once it's wrapped by
+        # LangGraph's generic tool-error text — decode the actual body
+        # Qdrant sent back so the real validation reason is visible
+        # instead of being silently discarded.
+        body = e.content.decode("utf-8", errors="replace") if isinstance(e.content, bytes) else e.content
+        raise RuntimeError(f"Qdrant query rejected (status {e.status_code}): {body}") from e
 
     return [
         {
