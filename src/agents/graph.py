@@ -143,14 +143,26 @@ def run_agent(
         msg_type = msg.__class__.__name__
         if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
             for tc in msg.tool_calls:
-                steps.append({"tool": tc["name"], "input": tc["args"]})
+                steps.append({"tool": tc["name"], "input": tc["args"], "tool_call_id": tc.get("id")})
         elif msg_type == "ToolMessage":
-            steps.append({"tool_result": str(msg.content)[:500]})
+            # Attach this result to the step that made the matching call,
+            # instead of appending a separate, unlinked entry — otherwise
+            # the UI has no way to show a tool call next to what it returned.
+            result_text = str(msg.content)[:500]
+            call_id = getattr(msg, "tool_call_id", None)
+            matched = next(
+                (s for s in steps if s.get("tool_call_id") == call_id and "output" not in s),
+                None,
+            ) if call_id else None
+            if matched is not None:
+                matched["output"] = result_text
+            else:
+                steps.append({"tool_result": result_text})
         elif msg_type == "AIMessage" and msg.content:
             final_answer = msg.content
 
     if not final_answer:
-        tool_results = [s["tool_result"] for s in steps if "tool_result" in s]
+        tool_results = [s.get("output") or s.get("tool_result") for s in steps if s.get("output") or s.get("tool_result")]
         if tool_results:
             final_answer = (
                 "I found some relevant context but couldn't finish forming a complete "
