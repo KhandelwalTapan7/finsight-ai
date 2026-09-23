@@ -55,11 +55,18 @@ def _table_to_markdown(table: list[list[str | None]]) -> str:
 
 
 def _page_looks_chart_heavy(page_text: str, image_count: int) -> bool:
-    # Heuristic: lots of images/drawings but thin text -> likely a chart/
-    # infographic page rather than a prose page. Good enough for a
-    # portfolio project; a production system would tune this threshold
-    # against labeled pages.
-    return image_count > 0 and len(page_text.strip()) < 400
+    # Call vision whenever the page contains any embedded image at all.
+    # The earlier version also required page_text to be short (<400
+    # chars), on the assumption that a chart-heavy page has little prose
+    # around it. That assumption fails constantly in real documents —
+    # financial reports, research papers, mixed dashboards — where a
+    # chart sits on the same page as several paragraphs of surrounding
+    # text. In that case the old heuristic silently skipped vision
+    # entirely: no error, no chart chunk, just nothing, with the only
+    # symptom being that questions about the chart's own content (axis
+    # labels, visual trend) quietly come back "not found" even though
+    # the PDF genuinely contains the chart.
+    return image_count > 0
 
 
 def _describe_chart_with_vision(png_bytes: bytes) -> str:
