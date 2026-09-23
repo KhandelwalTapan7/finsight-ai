@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.config import settings
 from src.ingestion.parser import parse_pdf
@@ -178,6 +179,15 @@ async def health():
 # as two separate Render services would mean paying for two instances and,
 # in embedded-Qdrant mode, fighting over an exclusive directory lock.
 # The chat UI is served at /ui; the API keeps /upload, /chat (POST), etc.
-from chainlit.utils import mount_chainlit
+try:
+    from chainlit.utils import mount_chainlit
 
-mount_chainlit(app=app, target="ui/chainlit_app.py", path="/ui")
+    mount_chainlit(app=app, target="ui/chainlit_app.py", path="/ui")
+except Exception as e:  # pragma: no cover - UI is optional for API-only runs
+    print(f"[warn] Chainlit UI not mounted: {e}")
+
+# Custom frontend — a self-contained HTML/JS page that talks to the /upload,
+# /chat, /ingest/status and /admin/* endpoints above directly. html=True
+# serves index.html for the bare /app/ path. Mounted after the Chainlit
+# mount so a startup failure there (as seen above) doesn't block this too.
+app.mount("/app", StaticFiles(directory="ui/custom", html=True), name="custom_ui")
