@@ -309,7 +309,8 @@
   // ---------- chat thread ----------
   function citeify(text){
     const escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;");
-    return escaped.replace(/\[([\w-]{3,16}\s+p\.\d+(?:\s*·\s*[\w-]+)*)\]/g, '<span class="cite">$1</span>');
+    const bolded = escaped.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    return bolded.replace(/\[([\w-]{3,16}\s+p\.\d+(?:\s*·\s*[\w-]+)*)\]/g, '<span class="cite">$1</span>');
   }
   function paragraphs(text){
     return text.split(/\n{2,}/).map(p => `<p>${citeify(p).replace(/\n/g,"<br>")}</p>`).join("");
